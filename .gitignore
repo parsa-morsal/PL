@@ -1,0 +1,4 @@
+*.rkt~
+compiled/
+*.pdf
+.DS_Store
