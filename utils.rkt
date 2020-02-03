@@ -11,9 +11,5 @@
         (replace (string-replace str (car chars) to) (cdr chars) to))))
 
 (provide
-  empty?
-  file->string)
-
-(provide
   head
   replace)

@@ -3,7 +3,7 @@
 (require "utils.rkt")
 
 (define run-size
-  (lambda (env)
-    (extend-env 'result (head (apply-env env 'result) (apply-env env 'size)) env)))
+  (lambda (env result)
+    (head result (apply-env! env 'size #t))))
 
 (provide run-size)

@@ -28,6 +28,6 @@
 
 (define run-directory
   (lambda (env)
-    (extend-env 'result (path-content (apply-env env 'directory)) env)))
+    (path-content (apply-env! env 'docs #t))))
 
 (provide run-directory)

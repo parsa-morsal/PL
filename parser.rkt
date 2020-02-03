@@ -1,4 +1,5 @@
-#lang eopl
+#lang racket
+(require (lib "eopl.ss" "eopl"))
 (require "utils.rkt")
 
 ; ------------------------------------------------------------------------------
@@ -11,14 +12,14 @@
     (identifier ((or letter "_" "," "/" "." "*" "?") (arbno (or letter digit "_" "," "/" "(" ")" "." "*" "?"))) symbol)))
 
 (define grammar
-  '((program ((arbno object)) a-program)
+  '((program (object) a-program)
     (object ("{" (separated-list pair ",") "}") a-object)
     (pair ("\"" identifier "\"" ":" value) a-pair)
     (value (number) num-value)
     (value ("\"" identifier "\"") str-value)
-    (value (list) lst-value)
+    (value (func) lst-value)
     (value (object) obj-value)
-    (list ("[" "\"" identifier "\"" (arbno operator "\"" identifier "\"") "]") a-list)
+    (func ("[" "\"" identifier "\"" (arbno operator "\"" identifier "\"") "]") a-list)
     (operator ("*") and-op)
     (operator ("+") or-op)
     (operator ("-") not-op)))
@@ -57,26 +58,57 @@
   (lambda (env search-var)
     (env search-var)))
 
+(define real-empty-env!
+  (lambda ()
+    (lambda (search-var find-here)
+      #f)))
+
+(define empty-env!
+  (lambda (parent-env)
+    (lambda (search-var find-here)
+      (apply-env! parent-env search-var #t))))
+
+(define extend-env!
+  (lambda (saved-var saved-val saved-env)
+    (lambda (search-var find-here)
+      (if find-here
+          (if (equal? search-var saved-var)
+              saved-val
+              (apply-env! saved-env search-var find-here))
+          (apply-env! saved-env search-var find-here)))))
+
+(define apply-env!
+  (lambda (env var find-here)
+    (env var find-here)))
+
 (provide
  empty-env
  extend-env
  apply-env)
 
+(provide
+ real-empty-env!
+ empty-env!
+ extend-env!
+ apply-env!)
+
 ; ------------------------------------------------------------------------------
 ; Initiating environments from program
 
+(define keywords '(assignment directory docs query wildcard distance input body size))
+
 (define lst->body
   (lambda (lst)
-    (cases list lst
+    (cases func lst
       (a-list (first ops rest)
-        (if (empty? ops)
-            (cons 'exact (cons first rest))
-            (cases operator (car ops)
-              (and-op () (cons '* (cons first rest)))
-              (or-op () (cons '+ (cons first rest)))
-              (not-op () (cons '- (cons first rest)))
-              (else (cons 'exact (cons first rest)))))))))
-    
+        (let ((zip (map list ops rest)))
+          (cons first (flatten (map (lambda (x)
+                       (cases operator (car x)
+                         (and-op () (list '* (cadr x)))
+                         (or-op () (list '+ (cadr x)))
+                         (not-op () (list '- (cadr x)))
+                         (else (list 'exact (cadr x))))) zip))))))))
+
 (define val->prim
   (lambda (val)
     (cases value val
@@ -94,28 +126,43 @@
             (init-func-data (cdr pairs) (cons (val->prim val) data)))))))
 
 (define init-pairs-env
-  (lambda (pairs env)
+  (lambda (pairs is-assign env)
     (if (empty? pairs)
         env
         (cases pair (car pairs)
-          (a-pair (id val) (extend-env id (val->prim val) (init-pairs-env (cdr pairs) env)))))))
+          (a-pair (id val)
+                  (cond
+                    [(equal? id 'assignment) (init-pairs-env (cdr pairs) #f (init-object-env (val->prim val) #t env))]
+                    
+                    [(equal? id 'docs)
+                     (cond
+                       [(string? (val->prim val)) (init-pairs-env (cdr pairs) #f (extend-env! id (val->prim val) env))]
+                       [else (init-pairs-env (cdr pairs) #f (extend-env! id (init-object-env (val->prim val) #f (empty-env! env)) env))])]
+                    
+                    [(equal? id 'query)
+                     (cond
+                       [(apply-env! env (string->symbol (val->prim val)) #t) (init-pairs-env (cdr pairs) #f (extend-env! id (apply-env! env (string->symbol (val->prim val)) #t) env))]
+                       [else (init-pairs-env (cdr pairs) #f (extend-env! id (val->prim val) env))])]
+                    
+                    [is-assign (init-pairs-env (cdr pairs) is-assign (extend-env! id (if (apply-env! env (string->symbol (val->prim val)) #f) (apply-env! env (string->symbol (val->prim val)) #f)
+                                                                                         (val->prim val)) env))]
+                    
+                    [(index-of keywords id) (init-pairs-env (cdr pairs) is-assign (extend-env! id (val->prim val) env))]
+                    
+                    [else
+                     (cases object (val->prim val)
+                       (a-object (prs) (init-pairs-env (cdr pairs) #f (extend-env! id (init-func-data prs '()) env))))]))))))
 
 (define init-object-env
-  (lambda (objs env)
-    (if (empty? objs)
-        env
-        (cases object (car objs)
-          (a-object (pairs)
-            (cases pair (car pairs)
-              (a-pair (id val)
-                 (if (equal? id 'func)
-                     (extend-env (val->prim val) (init-func-data (cdr pairs) '()) (init-object-env (cdr objs) env))
-                     (init-object-env (cdr objs) (init-pairs-env pairs env))))))))))
+  (lambda (obj is-assign env)
+    (cases object obj
+      (a-object (pairs)
+        (init-pairs-env pairs is-assign env)))))
 
 (define init-program-env
   (lambda (pgm)
     (cases program pgm
-      (a-program (objs) (init-object-env objs (empty-env))))))
+      (a-program (obj) (init-object-env obj #f (empty-env! (real-empty-env!)))))))
 
 (define init-env
   (lambda (str)

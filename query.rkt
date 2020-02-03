@@ -98,61 +98,70 @@
   (lambda (query)
     (string-contains? query "(")))
 
-(define func-data
-  (lambda (query)
-    (let ((splitted (string-split query "(")))
-      (let ((name (car splitted)))
-        (let ((inputs (string-split (string-trim (cadr splitted) ")") ",")))
-          (cons name inputs))))))
+(define get-args
+  (lambda (str)
+    (if (zero? (string-length str))
+        '()
+        (let ((first (car (regexp-match #rx"^[^,]*\\(.*\\)\\,?|^[^\\(\\),]*,?" str))))
+          (cons (if (string-suffix? first ",") (substring first 0 (- (string-length first) 1)) first) (get-args (regexp-replace #rx"^[^,]*\\(.*\\)\\,?|^[^\\(\\),]*,?" str "")))))))
+
+(define query-data
+  (lambda (str)
+    (let ((name (car (string-split (car (regexp-match #rx".*\\(.*\\)" str)) "("))))
+      (let ((all-args (car (regexp-match #rx"\\(.*\\)" str))))
+        (let ((clean-args (substring all-args 1 (- (string-length all-args) 1))))
+          (let ((args (get-args clean-args)))
+            (list name args)))))))
 
 (define init-func-env
   (lambda (args values env)
     (if (empty? args)
         env
-        (init-func-env (cdr args) (cdr values) (extend-env (car args) (car values) env)))))
+        (init-func-env (cdr args) (cdr values) (extend-env! (car args) (car values) env)))))
 
 (define eval-query
-  (lambda (body env)
-    (let ((converted (map (lambda (x) (if (apply-env env (symbol->string x)) (apply-env env (symbol->string x)) (symbol->string x))) (cdr body))))
+  (lambda (body env result)
+    (let ((initial-result
+           (if (is-func-query (car body))
+               (run-func-query env result (car body))
+               (filter-text result '() exact-query (car body) #t (if (apply-env! env 'distance #t) (apply-env! env 'distance #t) 0)))))
       (cond
-        [(equal? (car body) '-)
-         (let ((replaced (replace (car converted) (cdr converted) "")))
-           (if (equal? replaced "") (list "-" (car converted)) (list "-" replaced)))]
-        [(equal? (car body) '+) (list "+" (string-join converted))]
-        [(equal? (car body) '*) (list "*" (string-join converted))]
-        [(equal? (car body) 'exact) (list "exact" (string-join converted))]))))
+        [(empty? (cdr body)) initial-result]
+        [(and (equal? (cadr body) "*") (empty? initial-result)) initial-result]
+        [(equal? (cadr body) "*") (eval-query (cddr body) env initial-result)]
+        [else (remove-duplicates (append initial-result (eval-query (cddr body) env result)))]))))
 
 (define run-func-query
-  (lambda (env)
-    (let ((query-data (func-data (apply-env env 'query))))
-      (let ((name (car query-data)) (arg-vals (cdr query-data)))
-        (let ((body (car (apply-env env name))) (args (cdr (apply-env env name))))
-          (let ((func-env (init-func-env args arg-vals (empty-env))))
-            (let ((evaluated (eval-query body func-env)))
-              (cond
-                [(equal? "-" (car evaluated))
-                 (extend-env 'result (filter-text (apply-env env 'result) '() exact-query (cadr evaluated) #t (if (apply-env env 'distance) (apply-env env 'distance) 0)) env)]
-                [(equal? "+" (car evaluated))
-                 (extend-env 'result (filter-text (apply-env env 'result) '() or-query (cadr evaluated) #f (if (apply-env env 'distance) (apply-env env 'distance) 0)) env)]
-                [(equal? "*" (car evaluated))
-                 (extend-env 'result (filter-text (apply-env env 'result) '() and-query (cadr evaluated) #t (if (apply-env env 'distance) (apply-env env 'distance) 0)) env)]
-                [(equal? "exact" (car evaluated))
-                 (extend-env 'result (filter-text (apply-env env 'result) '() exact-query (cadr evaluated) #t (if (apply-env env 'distance) (apply-env env 'distance) 0)) env)]))))))))
+  (lambda (env result query)
+    (let ((call (query-data query)))
+      (let ((name (car call)) (arg-vals (cadr call)))
+        (let ((body (car (apply-env! env (string->symbol name) #t))) (args (cdr (apply-env! env (string->symbol name) #t))))
+          (let ((func-env (init-func-env args arg-vals (empty-env! env))))
+            (let ((converted (map (lambda (x)
+                                    (cond
+                                      [(apply-env! func-env (symbol->string x) #t) (apply-env! func-env (symbol->string x) #t)]
+                                      [(apply-env! func-env x #t) (apply-env! func-env x #t)]
+                                      [else (symbol->string x)])) body)))
+              (begin
+                (display "evaluating ")
+                (display name)
+                (newline)
+                (eval-query converted func-env result)))))))))
 
 ; ------------------------------------------------------------------------------
 ; Run
 
 (define run-query
-  (lambda (env)
+  (lambda (env result)
     (cond
-      [(is-func-query (apply-env env 'query)) (run-func-query env)]
-      [(apply-env env 'wildcard)
-       (extend-env 'result (filter-text (apply-env env 'result) '() regex-query (apply-env env 'query) #t (if (apply-env env 'distance) (apply-env env 'distance) 0)) env)]
+      [(is-func-query (apply-env! env 'query #t)) (run-func-query env result (apply-env! env 'query #t))]
+      [(apply-env! env 'wildcard #t)
+       (filter-text result '() regex-query (apply-env! env 'query #t) #t (if (apply-env! env 'distance #t) (apply-env! env 'distance #t) 0))]
       [else
-        (case (apply-env env 'method)
-          [("exact") (extend-env 'result (filter-text (apply-env env 'result) '() exact-query (apply-env env 'query) #t (if (apply-env env 'distance) (apply-env env 'distance) 0)) env)]
-          [("and") (extend-env 'result (filter-text (apply-env env 'result) '() and-query (apply-env env 'query) #t (if (apply-env env 'distance) (apply-env env 'distance) 0)) env)]
-          [("or") (extend-env 'result (filter-text (apply-env env 'result) '() or-query (apply-env env 'query) #f (if (apply-env env 'distance) (apply-env env 'distance) 0)) env)]
-          [else (extend-env 'result (filter-text (apply-env env 'result) '() exact-query (apply-env env 'query) #t (if (apply-env env 'distance) (apply-env env 'distance) 0)) env)])])))
+        (case (apply-env! env 'method #t)
+          [("exact") (filter-text result '() exact-query (apply-env! env 'query #t) #t (if (apply-env! env 'distance #t) (apply-env! env 'distance #t) 0))]
+          [("and") (filter-text result '() and-query (apply-env! env 'query #t) #t (if (apply-env! env 'distance #t) (apply-env! env 'distance #t) 0))]
+          [("or") (filter-text result '() or-query (apply-env! env 'query #t) #f (if (apply-env! env 'distance #t) (apply-env! env 'distance #t) 0))]
+          [else (filter-text result '() exact-query (apply-env! env 'query #t) #t (if (apply-env! env 'distance #t) (apply-env! env 'distance #t) 0))])])))
 
 (provide run-query)

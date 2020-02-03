@@ -5,15 +5,21 @@
 (require "size.rkt")
 (require "query.rkt")
 
-(define run-order '("directory" "query" "size" "end"))
+(define run-order '("docs" "query" "size" "end"))
 
 (define make-run
-  (lambda (order env)
+  (lambda (order env result)
     (case (car order)
-      [("directory") (if (apply-env env 'directory) (make-run (cdr order) (run-directory env)) (make-run (cdr order) env))]
-      [("size") (if (apply-env env 'size) (make-run (cdr order) (run-size env)) (make-run (cdr order) env))]
-      [("query") (if (apply-env env 'query) (make-run (cdr order) (run-query env)) (make-run (cdr order) env))]
-      [else env])))
+      [("docs") (if (apply-env! env 'docs #t) (make-run
+                                               (cdr order)
+                                               env
+                                               (cond
+                                                 [(string? (apply-env! env 'docs #t)) (run-directory env)]
+                                                 [else (make-run order (apply-env! env 'docs #t) result)]))
+                    (make-run (cdr order) env result))]
+      [("size") (if (apply-env! env 'size #t) (make-run (cdr order) env (run-size env result)) (make-run (cdr order) env result))]
+      [("query") (if (apply-env! env 'query #t) (make-run (cdr order) env (run-query env result)) (make-run (cdr order) env result))]
+      [else result])))
 
 (define get-result
   (lambda (lst res)
@@ -23,4 +29,4 @@
 
 (define run
   (lambda (path)
-    (get-result (apply-env (make-run run-order (init-env (file->string path))) 'result) '())))
+    (get-result (make-run run-order (init-env (file->string path)) '()) '())))

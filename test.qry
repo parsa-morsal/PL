@@ -1,1 +1,1 @@
-{ "size" : 5 , "directory" : "./docs" , "query" : "the" }
+{ "assignment" : { "x" : "near" } , "and_inputs" : { "body" : ["x" * "or_inputs()"] , "input" : "x" } , "or_inputs" : { "body" : ["or_inputs()"] } , "query" : "and_inputs(hello)" , "docs" : "./docs" }
