@@ -15,7 +15,7 @@
                                                env
                                                (cond
                                                  [(string? (apply-env! env 'docs #t)) (run-directory env)]
-                                                 [else (make-run order (apply-env! env 'docs #t) result)]))
+                                                 [else (make-run run-order (apply-env! env 'docs #t) result)]))
                     (make-run (cdr order) env result))]
       [("size") (if (apply-env! env 'size #t) (make-run (cdr order) env (run-size env result)) (make-run (cdr order) env result))]
       [("query") (if (apply-env! env 'query #t) (make-run (cdr order) env (run-query env result)) (make-run (cdr order) env result))]

@@ -1,0 +1,1 @@
+{ "assignment" : { "repvar" :  "represent" } , "query" : "qwertyuiop" , "docs" : { "query" : "and_inputs(novel)" , "and_inputs" : { "body" : ["actors" * "x" * "repvar"] , "input": "x" } , "docs" : "docs/" } }

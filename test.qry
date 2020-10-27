@@ -1,1 +1,1 @@
-{ "assignment" : { "x" : "near" } , "and_inputs" : { "body" : ["x" * "or_inputs()"] , "input" : "x" } , "or_inputs" : { "body" : ["or_inputs()"] } , "query" : "and_inputs(hello)" , "docs" : "./docs" }
+{ "docs" : "docs/" , "query" : "or_inputs()" , "or_inputs" : { "body" : ["narrow" + "represent"] } }

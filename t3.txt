@@ -1,0 +1,1 @@
+{ "assignment" : { "x" : "narrow" , "y" : "represent" , "z" : "newyork" } , "size" : 1 , "query" : "z" , "docs" : { "docs" : "docs/" , "query" : "or_inputs()" , "or_inputs" : { "body" : ["x" + "y"] } } }

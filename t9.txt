@@ -1,0 +1,1 @@
+{ "repr" : { "body" : ["represent"] } , "and_inputs" : { "body" : ["in1" * "in2"] , "input" : "in1" , "input" : "in2" } , "query" : "qwertyuiop" , "docs" : { "docs" : "docs/" , "assignment" : { "key" : "and_inputs(narrow,repr())" } , "query" : "key" } }

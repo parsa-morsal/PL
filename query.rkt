@@ -28,7 +28,23 @@
 
 (define distance
   (lambda (a b)
-    (levij a b (- (string-length a) 1) (- (string-length b) 1))))
+    (levenshtein a b)))
+
+(define (levenshtein a b)
+  (define (ls0 a-index b-index)
+    (cond [(or (= a-index -1) (= b-index -1)) (abs (- a-index b-index))]
+          [else
+           (define a-char (string-ref a a-index))
+           (define b-char (string-ref b b-index))
+           (if (equal? a-char b-char)
+               (ls (sub1 a-index) (sub1 b-index))
+               (min (add1 (ls (sub1 a-index) b-index))
+                    (add1 (ls a-index (sub1 b-index)))
+                    (add1 (ls (sub1 a-index) (sub1 b-index)))))]))
+  (define memo (make-hash))
+  (define (ls a-i b-i)
+    (hash-ref! memo (cons a-i b-i) (λ() (ls0 a-i b-i))))
+  (ls (sub1 (string-length a)) (sub1 (string-length b))))
 
 (define lower-distance?
   (lambda (a b th) (<= (distance a b) th)))
@@ -123,7 +139,7 @@
   (lambda (body env result)
     (let ((initial-result
            (if (is-func-query (car body))
-               (run-func-query env result (car body))
+               (run-func-query env result (car body) #f)
                (filter-text result '() exact-query (car body) #t (if (apply-env! env 'distance #t) (apply-env! env 'distance #t) 0)))))
       (cond
         [(empty? (cdr body)) initial-result]
@@ -132,15 +148,15 @@
         [else (remove-duplicates (append initial-result (eval-query (cddr body) env result)))]))))
 
 (define run-func-query
-  (lambda (env result query)
+  (lambda (env result query parent)
     (let ((call (query-data query)))
       (let ((name (car call)) (arg-vals (cadr call)))
-        (let ((body (car (apply-env! env (string->symbol name) #t))) (args (cdr (apply-env! env (string->symbol name) #t))))
+        (let ((body (car (apply-env! env (string->symbol name) parent))) (args (cdr (apply-env! env (string->symbol name) parent))))
           (let ((func-env (init-func-env args arg-vals (empty-env! env))))
             (let ((converted (map (lambda (x)
                                     (cond
-                                      [(apply-env! func-env (symbol->string x) #t) (apply-env! func-env (symbol->string x) #t)]
-                                      [(apply-env! func-env x #t) (apply-env! func-env x #t)]
+                                      [(apply-env! func-env (symbol->string x) parent) (apply-env! func-env (symbol->string x) parent)]
+                                      [(apply-env! func-env x parent) (apply-env! func-env x parent)]
                                       [else (symbol->string x)])) body)))
               (begin
                 (display "evaluating ")
@@ -154,7 +170,7 @@
 (define run-query
   (lambda (env result)
     (cond
-      [(is-func-query (apply-env! env 'query #t)) (run-func-query env result (apply-env! env 'query #t))]
+      [(is-func-query (apply-env! env 'query #t)) (run-func-query env result (apply-env! env 'query #t) #t)]
       [(apply-env! env 'wildcard #t)
        (filter-text result '() regex-query (apply-env! env 'query #t) #t (if (apply-env! env 'distance #t) (apply-env! env 'distance #t) 0))]
       [else

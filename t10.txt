@@ -1,0 +1,1 @@
+{ "and_inputs" : { "body" : ["they" * "beforehand" * "directly"] } , "query" : "qwertyuiop" , "docs" : { "assignment" : { "they" : "and_inputs()" } , "query" : "they" , "docs" : "docs/" } }
